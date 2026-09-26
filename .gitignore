@@ -13,6 +13,9 @@
 .env.local
 .env.*.local
 
+# local SQLite database (dev/home-use persistence; see lib/db.ts)
+/data/
+
 # misc
 .DS_Store
 *.pem

@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 1) Parental daily time limit (see lib/usageLimiter.ts for its MVP caveats).
-    if (isOverDailyLimit(sessionId)) {
+    if (await isOverDailyLimit(sessionId)) {
       return NextResponse.json({ error: "daily_limit_reached" }, { status: 403 });
     }
 
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     // 3) Moderate the CHILD'S OWN words before they ever reach the tutor model.
     if (childText && (await isFlagged(childText))) {
       const audioBase64 = (await synthesize(SAFE_FALLBACK_REPLY)).toString("base64");
-      addUsedSeconds(sessionId, clientSeconds);
+      await addUsedSeconds(sessionId, clientSeconds);
       return NextResponse.json({
         childText,
         aiText: SAFE_FALLBACK_REPLY,
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     //    and no tools (web search / image generation / code execution) are
     //    attached, so the model has no technical means to do those things even
     //    if asked.
-    const history = getHistory(sessionId);
+    const history = await getHistory(sessionId);
     const response = await openai.responses.create({
       model: CHAT_MODEL,
       input: [
@@ -97,9 +97,9 @@ export async function POST(req: NextRequest) {
 
     // 6) Short-term memory for natural follow-up questions, plus a hook for a
     //    future parent-facing log of off-topic attempts.
-    appendTurn(sessionId, { role: "user", content: childText });
-    appendTurn(sessionId, { role: "assistant", content: aiText });
-    addUsedSeconds(sessionId, clientSeconds);
+    await appendTurn(sessionId, { role: "user", content: childText });
+    await appendTurn(sessionId, { role: "assistant", content: aiText });
+    await addUsedSeconds(sessionId, clientSeconds);
 
     if (parsed.off_topic_attempt) {
       // TODO: persist { sessionId, childText, reason: parsed.flag_reason, at: Date.now() }
