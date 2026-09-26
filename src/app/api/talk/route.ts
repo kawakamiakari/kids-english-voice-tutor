@@ -75,7 +75,6 @@ export async function POST(req: NextRequest) {
         { role: "user", content: childText || "(no speech detected)" },
       ],
       text: { format: { type: "json_schema", ...REPLY_SCHEMA } },
-      temperature: 0.7,
     });
 
     // NOTE: `output_text` is the SDK convenience accessor that concatenates the
