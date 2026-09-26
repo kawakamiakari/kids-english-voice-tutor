@@ -5,6 +5,19 @@ import { useCallback, useRef, useState } from "react";
 export type Phase = "idle" | "recording" | "thinking" | "speaking" | "error" | "limit_reached";
 
 export type Message = { role: "child" | "pico"; text: string };
+export type SummaryPoint = { kind: "praise" | "tip"; text: string };
+export type Summary = { headline: string; points: SummaryPoint[] };
+
+// One collapsible block in the chat log: everything said between one tap-to-start
+// and the matching tap-to-stop. `pending` is true while its summary is being
+// fetched; a session with `pending: false` and `summary: null` was abandoned
+// without a summary (e.g. an error cut the conversation short).
+export type Session = {
+  id: string;
+  messages: Message[];
+  summary: Summary | null;
+  pending: boolean;
+};
 
 // Silence-detection tuning. RMS is the mic's volume on a roughly 0-1 scale.
 const SPEECH_RMS_THRESHOLD = 0.02;
@@ -13,11 +26,15 @@ const MAX_RECORDING_MS = 15000;
 const NO_SPEECH_TIMEOUT_MS = 8000;
 const VAD_POLL_MS = 100;
 
+function newId() {
+  return typeof window !== "undefined"
+    ? window.crypto?.randomUUID?.() ?? String(Date.now())
+    : String(Math.random());
+}
+
 export function useVoiceChat() {
   const [phase, setPhase] = useState<Phase>("idle");
-  const [childText, setChildText] = useState("");
-  const [aiText, setAiText] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -25,6 +42,12 @@ export function useVoiceChat() {
   const conversationActiveRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const vadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // The session currently being recorded into. Kept as a ref (mirroring the
+  // last entry appended to `sessions`) so async callbacks can read/append to
+  // it synchronously without depending on React state timing.
+  const currentSessionIdRef = useRef<string | null>(null);
+  const currentMessagesRef = useRef<Message[]>([]);
 
   // Bumped on every new turn/stop so callbacks from an abandoned turn (e.g. the
   // child tapped stop while a request was in flight) know to no-op instead of
@@ -51,8 +74,6 @@ export function useVoiceChat() {
   const stopAndSendRef = useRef<() => Promise<void>>(async () => {});
 
   const startListening = useCallback(async () => {
-    setChildText("");
-    setAiText("");
     const myGen = ++generationRef.current;
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -115,6 +136,7 @@ export function useVoiceChat() {
 
   const stopAndSend = useCallback(async () => {
     const myGen = generationRef.current;
+    const mySessionId = currentSessionIdRef.current;
     stopVad();
 
     const recorder = mediaRecorderRef.current;
@@ -127,7 +149,7 @@ export function useVoiceChat() {
     recorder.stream.getTracks().forEach((t) => t.stop());
     await stopped;
 
-    if (myGen !== generationRef.current) return;
+    if (myGen !== generationRef.current || !mySessionId) return;
 
     const blob = new Blob(chunksRef.current, { type: "audio/webm" });
     const seconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
@@ -156,15 +178,21 @@ export function useVoiceChat() {
       const data = await res.json();
       if (myGen !== generationRef.current) return;
 
-      const newChildText = data.childText ?? "";
-      const newAiText = data.aiText ?? "";
-      setChildText(newChildText);
-      setAiText(newAiText);
-      setMessages((prev) => [
-        ...prev,
+      const newChildText: string = data.childText ?? "";
+      const newAiText: string = data.aiText ?? "";
+      const newMsgs: Message[] = [
         ...(newChildText.trim() ? [{ role: "child" as const, text: newChildText }] : []),
         ...(newAiText.trim() ? [{ role: "pico" as const, text: newAiText }] : []),
-      ]);
+      ];
+
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== mySessionId) return s;
+          const messages = [...s.messages, ...newMsgs];
+          currentMessagesRef.current = messages;
+          return { ...s, messages };
+        })
+      );
 
       const audio = new Audio(`data:audio/mp3;base64,${data.audioBase64}`);
       setPhase("speaking");
@@ -191,7 +219,49 @@ export function useVoiceChat() {
 
   stopAndSendRef.current = stopAndSend;
 
+  const fetchSummary = useCallback(async (sessionId: string, transcript: Message[]) => {
+    const applyFallback = (summary: Summary) => {
+      setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, summary, pending: false } : s)));
+    };
+
+    try {
+      const res = await fetch("/api/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript }),
+      });
+      if (!res.ok) {
+        applyFallback({
+          headline: "Great job practicing English today!",
+          points: [
+            { kind: "praise", text: "You talked with Pico today!" },
+            { kind: "tip", text: "またこんど おはなし しようね" },
+          ],
+        });
+        return;
+      }
+      const data = await res.json();
+      applyFallback({ headline: data.headline, points: data.points });
+      if (data.audioBase64) {
+        const audio = new Audio(`data:audio/mp3;base64,${data.audioBase64}`);
+        audio.play().catch(() => {});
+      }
+    } catch {
+      applyFallback({
+        headline: "Great job practicing English today!",
+        points: [
+          { kind: "praise", text: "You talked with Pico today!" },
+          { kind: "tip", text: "またこんど おはなし しようね" },
+        ],
+      });
+    }
+  }, []);
+
   const startConversation = useCallback(() => {
+    const id = newId();
+    currentSessionIdRef.current = id;
+    currentMessagesRef.current = [];
+    setSessions((prev) => [...prev, { id, messages: [], summary: null, pending: false }]);
     conversationActiveRef.current = true;
     startListening();
   }, [startListening]);
@@ -202,8 +272,24 @@ export function useVoiceChat() {
     stopVad();
     const recorder = mediaRecorderRef.current;
     recorder?.stream.getTracks().forEach((t) => t.stop());
-    setPhase("idle");
-  }, [stopVad]);
 
-  return { phase, childText, aiText, messages, startConversation, endConversation };
+    const sessionId = currentSessionIdRef.current;
+    const transcript = currentMessagesRef.current;
+    currentSessionIdRef.current = null;
+
+    if (!sessionId || transcript.length === 0) {
+      // Nothing was said - drop the empty session rather than leaving a blank card.
+      if (sessionId) {
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      }
+      setPhase("idle");
+      return;
+    }
+
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, pending: true } : s)));
+    setPhase("idle");
+    fetchSummary(sessionId, transcript);
+  }, [stopVad, fetchSummary]);
+
+  return { phase, sessions, startConversation, endConversation };
 }
