@@ -1,17 +1,17 @@
 "use client";
 
-import { useVoiceChat } from "@/hooks/useVoiceChat";
+import type { Phase } from "@/hooks/useVoiceChat";
 
-const LABELS: Record<string, string> = {
+const LABELS: Record<Phase, string> = {
   idle: "🎤 START",
-  recording: "🎤 Listening...",
+  recording: "👂 Listening...",
   thinking: "🤔 ...",
   speaking: "🔊 Pico is talking",
   error: "😵 Oops, try again",
   limit_reached: "⏰ See you tomorrow!",
 };
 
-const COLORS: Record<string, string> = {
+const COLORS: Record<Phase, string> = {
   idle: "#4dabf7",
   recording: "#ff6b6b",
   thinking: "#ffd43b",
@@ -20,25 +20,38 @@ const COLORS: Record<string, string> = {
   limit_reached: "#adb5bd",
 };
 
-export function TalkButton() {
-  const { phase, aiText, startRecording, stopRecordingAndSend } = useVoiceChat();
+const HINTS: Record<Phase, string> = {
+  idle: "Tap to start, then just talk to Pico!",
+  recording: "Say something! Pico is listening...",
+  thinking: "Pico is thinking...",
+  speaking: "Listen to Pico, then talk back.",
+  error: "Something went wrong. Tap to try again.",
+  limit_reached: "You've used up today's talking time.",
+};
 
-  const handlePress = () => {
-    if (phase === "idle" || phase === "error") startRecording();
-  };
-  const handleRelease = () => {
-    if (phase === "recording") stopRecordingAndSend();
+type Props = {
+  phase: Phase;
+  onStart: () => void;
+  onStop: () => void;
+};
+
+export function TalkButton({ phase, onStart, onStop }: Props) {
+  const conversationActive = phase === "recording" || phase === "thinking" || phase === "speaking";
+
+  const handleClick = () => {
+    if (phase === "idle" || phase === "error") {
+      onStart();
+    } else if (conversationActive) {
+      onStop();
+    }
   };
 
-  const disabled = phase === "thinking" || phase === "speaking" || phase === "limit_reached";
+  const disabled = phase === "limit_reached";
 
   return (
     <div style={{ textAlign: "center" }}>
       <button
-        onMouseDown={handlePress}
-        onMouseUp={handleRelease}
-        onTouchStart={handlePress}
-        onTouchEnd={handleRelease}
+        onClick={handleClick}
         disabled={disabled}
         style={{
           fontSize: "2rem",
@@ -53,10 +66,12 @@ export function TalkButton() {
       >
         {LABELS[phase]}
       </button>
-      {aiText && <p style={{ fontSize: "1.5rem", marginTop: "2rem" }}>{aiText}</p>}
-      <p style={{ marginTop: "1rem", color: "#868e96" }}>
-        Hold the button down and speak, then let go.
-      </p>
+      <p style={{ marginTop: "1rem", color: "#868e96" }}>{HINTS[phase]}</p>
+      {conversationActive && (
+        <p style={{ marginTop: "0.5rem", color: "#adb5bd", fontSize: "0.9rem" }}>
+          Tap the button anytime to stop.
+        </p>
+      )}
     </div>
   );
 }
