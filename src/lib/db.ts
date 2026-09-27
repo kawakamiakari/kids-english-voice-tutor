@@ -46,6 +46,28 @@ async function ensureSchema(db: Client): Promise<void> {
          created_at INTEGER NOT NULL,
          PRIMARY KEY (session_id, turn_index)
        )`,
+      `CREATE TABLE IF NOT EXISTS flag_events (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         child_id TEXT NOT NULL,
+         child_text TEXT NOT NULL,
+         reason TEXT NOT NULL,
+         created_at INTEGER NOT NULL
+       )`,
+      `CREATE TABLE IF NOT EXISTS session_summaries (
+         conversation_id TEXT PRIMARY KEY,
+         child_id TEXT NOT NULL,
+         headline TEXT NOT NULL,
+         points_json TEXT NOT NULL,
+         created_at INTEGER NOT NULL
+       )`,
+      // Single fixed row (id = 1): this app has one shared parent PIN, not
+      // per-parent accounts, so there is nothing to key a lockout by except
+      // "the PIN entry form" itself.
+      `CREATE TABLE IF NOT EXISTS parent_login_attempts (
+         id INTEGER PRIMARY KEY CHECK (id = 1),
+         fail_count INTEGER NOT NULL DEFAULT 0,
+         locked_until INTEGER NOT NULL DEFAULT 0
+       )`,
     ],
     "write"
   );

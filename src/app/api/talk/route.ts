@@ -12,6 +12,7 @@ import {
 import { isFlagged } from "@/lib/moderation";
 import { getHistory, appendTurn } from "@/lib/sessionStore";
 import { isOverDailyLimit, addUsedSeconds } from "@/lib/usageLimiter";
+import { recordFlagEvent } from "@/lib/flagEvents";
 
 // Needs Node.js APIs (Buffer, File), not the Edge runtime.
 export const runtime = "nodejs";
@@ -95,16 +96,14 @@ export async function POST(req: NextRequest) {
       aiText = SAFE_FALLBACK_REPLY;
     }
 
-    // 6) Short-term memory for natural follow-up questions, plus a hook for a
-    //    future parent-facing log of off-topic attempts.
+    // 6) Short-term memory for natural follow-up questions, plus a persisted
+    //    log of off-topic attempts for the parent dashboard.
     await appendTurn(sessionId, { role: "user", content: childText });
     await appendTurn(sessionId, { role: "assistant", content: aiText });
     await addUsedSeconds(sessionId, clientSeconds);
 
     if (parsed.off_topic_attempt) {
-      // TODO: persist { sessionId, childText, reason: parsed.flag_reason, at: Date.now() }
-      // to a real store once you build the parent dashboard. For the MVP we just log it.
-      console.log(`[off-topic attempt] session=${sessionId} reason=${parsed.flag_reason}`);
+      await recordFlagEvent(sessionId, childText, parsed.flag_reason);
     }
 
     // 7) Text -> speech.

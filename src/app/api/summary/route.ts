@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { openai } from "@/lib/openai";
 import { SUMMARY_PROMPT, SUMMARY_SCHEMA, CHAT_MODEL, TTS_MODEL, TTS_VOICE } from "@/lib/systemPrompt";
+import { saveSummary } from "@/lib/summaryStore";
 
 // Needs Node.js APIs (Buffer), not the Edge runtime.
 export const runtime = "nodejs";
@@ -25,6 +26,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const transcript: TranscriptMessage[] = Array.isArray(body?.transcript) ? body.transcript : [];
+    const conversationId = String(body?.conversationId ?? "");
+    const childId = String(body?.childId ?? "");
 
     let parsed = FALLBACK_SUMMARY;
 
@@ -47,6 +50,12 @@ export async function POST(req: NextRequest) {
       } catch {
         parsed = FALLBACK_SUMMARY;
       }
+    }
+
+    // Persist so the parent dashboard can show today's summaries after this
+    // browser tab is gone. Skipped for empty transcripts (nothing was said).
+    if (transcript.length > 0 && conversationId && childId) {
+      await saveSummary(conversationId, childId, parsed.headline, parsed.points);
     }
 
     const spokenText = [parsed.headline, ...parsed.points.map((p) => p.text)].join(" ");

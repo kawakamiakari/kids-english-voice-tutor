@@ -228,7 +228,7 @@ export function useVoiceChat() {
       const res = await fetch("/api/summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript }),
+        body: JSON.stringify({ transcript, conversationId: sessionId, childId: sessionIdRef.current }),
       });
       if (!res.ok) {
         applyFallback({
