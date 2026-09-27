@@ -6,14 +6,13 @@ import {
   SAFE_FALLBACK_REPLY,
   CHAT_MODEL,
   TRANSCRIBE_MODEL,
-  TTS_MODEL,
-  TTS_VOICE,
 } from "@/lib/systemPrompt";
 import { isFlagged } from "@/lib/moderation";
 import { getHistory, appendTurn } from "@/lib/sessionStore";
 import { isOverDailyLimit, addUsedSeconds } from "@/lib/usageLimiter";
 import { recordFlagEvent } from "@/lib/flagEvents";
 import { getChild } from "@/lib/children";
+import { synthesizeSpeech } from "@/lib/tts";
 
 // Needs Node.js APIs (Buffer, File), not the Edge runtime.
 export const runtime = "nodejs";
@@ -58,7 +57,7 @@ export async function POST(req: NextRequest) {
 
     // 3) Moderate the CHILD'S OWN words before they ever reach the tutor model.
     if (childText && (await isFlagged(childText))) {
-      const audioBase64 = (await synthesize(SAFE_FALLBACK_REPLY)).toString("base64");
+      const audioBase64 = (await synthesizeSpeech(SAFE_FALLBACK_REPLY)).toString("base64");
       await addUsedSeconds(childId, clientSeconds);
       return NextResponse.json({
         childText,
@@ -113,20 +112,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 7) Text -> speech.
-    const audioBase64 = (await synthesize(aiText)).toString("base64");
+    const audioBase64 = (await synthesizeSpeech(aiText)).toString("base64");
 
     return NextResponse.json({ childText, aiText, audioBase64, flagged: false });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
-}
-
-async function synthesize(text: string): Promise<Buffer> {
-  const speech = await openai.audio.speech.create({
-    model: TTS_MODEL,
-    voice: TTS_VOICE,
-    input: text,
-  });
-  return Buffer.from(await speech.arrayBuffer());
 }

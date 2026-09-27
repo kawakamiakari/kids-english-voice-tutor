@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { openai } from "@/lib/openai";
-import { buildSummaryPrompt, SUMMARY_SCHEMA, CHAT_MODEL, TTS_MODEL, TTS_VOICE } from "@/lib/systemPrompt";
+import { buildSummaryPrompt, SUMMARY_SCHEMA, CHAT_MODEL } from "@/lib/systemPrompt";
 import { saveSummary } from "@/lib/summaryStore";
 import { getChild } from "@/lib/children";
+import { synthesizeSpeech } from "@/lib/tts";
 
 // Needs Node.js APIs (Buffer), not the Edge runtime.
 export const runtime = "nodejs";
@@ -61,12 +62,7 @@ export async function POST(req: NextRequest) {
     }
 
     const spokenText = [parsed.headline, ...parsed.points.map((p) => p.text)].join(" ");
-    const speech = await openai.audio.speech.create({
-      model: TTS_MODEL,
-      voice: TTS_VOICE,
-      input: spokenText,
-    });
-    const audioBase64 = Buffer.from(await speech.arrayBuffer()).toString("base64");
+    const audioBase64 = (await synthesizeSpeech(spokenText)).toString("base64");
 
     return NextResponse.json({ ...parsed, audioBase64 });
   } catch (err) {

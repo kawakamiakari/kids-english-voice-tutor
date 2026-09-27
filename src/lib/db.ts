@@ -52,6 +52,15 @@ async function ensureSchema(db: Client): Promise<void> {
          level INTEGER NOT NULL,
          created_at INTEGER NOT NULL
        )`,
+      `CREATE TABLE IF NOT EXISTS eiken_results (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         child_id TEXT NOT NULL,
+         grade TEXT NOT NULL,
+         transcript_json TEXT NOT NULL,
+         headline TEXT NOT NULL,
+         points_json TEXT NOT NULL,
+         created_at INTEGER NOT NULL
+       )`,
       `CREATE TABLE IF NOT EXISTS flag_events (
          id INTEGER PRIMARY KEY AUTOINCREMENT,
          child_id TEXT NOT NULL,

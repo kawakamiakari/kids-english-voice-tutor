@@ -48,6 +48,7 @@ export async function deleteChild(id: string): Promise<void> {
       { sql: "DELETE FROM chat_turns WHERE session_id = ?", args: [id] },
       { sql: "DELETE FROM flag_events WHERE child_id = ?", args: [id] },
       { sql: "DELETE FROM session_summaries WHERE child_id = ?", args: [id] },
+      { sql: "DELETE FROM eiken_results WHERE child_id = ?", args: [id] },
       { sql: "DELETE FROM children WHERE id = ?", args: [id] },
     ],
     "write"

@@ -6,6 +6,15 @@ type Level = 1 | 2 | 3;
 type SummaryPoint = { kind: "praise" | "tip"; text: string };
 type Summary = { conversationId: string; headline: string; points: SummaryPoint[]; createdAt: number };
 type FlagEvent = { childText: string; reason: string; createdAt: number };
+type EikenStep = { prompt: string; answer: string };
+type EikenResult = {
+  id: number;
+  grade: string;
+  transcript: EikenStep[];
+  headline: string;
+  points: SummaryPoint[];
+  createdAt: number;
+};
 type ChildBreakdown = {
   id: string;
   name: string;
@@ -13,6 +22,7 @@ type ChildBreakdown = {
   usedSeconds: number;
   summaries: Summary[];
   flagEvents: FlagEvent[];
+  eikenResults: EikenResult[];
 };
 type Dashboard = { limitMinutes: number; children: ChildBreakdown[] };
 
@@ -234,6 +244,34 @@ export default function ParentPage() {
                 ))}
               </ul>
             </div>
+          ))}
+
+          <h3 style={{ fontSize: "1rem", marginTop: "1rem" }}>英検3級 めんせつ練習</h3>
+          {child.eikenResults.length === 0 && <p>まだありません</p>}
+          {child.eikenResults.map((r) => (
+            <details key={r.id} style={{ marginBottom: "1rem" }}>
+              <summary>
+                <strong>
+                  {formatTime(r.createdAt)} - {r.headline}
+                </strong>
+              </summary>
+              <ul style={{ margin: "0.25rem 0 0.75rem" }}>
+                {r.points.map((p, i) => (
+                  <li key={i}>
+                    {p.kind === "praise" ? "👏 " : "💡 "}
+                    {p.text}
+                  </li>
+                ))}
+              </ul>
+              <ul style={{ margin: 0, fontSize: "0.85rem", color: "#555" }}>
+                {r.transcript.map((step, i) => (
+                  <li key={i} style={{ marginBottom: "0.4rem" }}>
+                    <div>Q: {step.prompt}</div>
+                    <div>A: {step.answer || "(こたえなし)"}</div>
+                  </li>
+                ))}
+              </ul>
+            </details>
           ))}
 
           <h3 style={{ fontSize: "1rem", marginTop: "1rem" }}>範囲外の発言ログ</h3>

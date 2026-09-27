@@ -3,20 +3,22 @@
 import { useEffect, useState } from "react";
 import { TalkButton } from "@/components/TalkButton";
 import { ChatHistory } from "@/components/ChatHistory";
+import { EikenInterviewScreen } from "@/components/EikenInterviewScreen";
 import { useVoiceChat } from "@/hooks/useVoiceChat";
 
 type ChildOption = { id: string; name: string };
+type Mode = "talk" | "eiken";
 
 const STORAGE_KEY = "englishTime.selectedChildId";
 
 function VoiceChatScreen({
   childId,
   childName,
-  onSwitch,
+  onExit,
 }: {
   childId: string;
   childName: string;
-  onSwitch: () => void;
+  onExit: () => void;
 }) {
   const { phase, sessions, startConversation, endConversation } = useVoiceChat(childId);
 
@@ -30,15 +32,12 @@ function VoiceChatScreen({
         background: "#fff9db",
       }}
     >
-      <h1 style={{ fontSize: "2rem", margin: 0, padding: "1rem 1rem 0", textAlign: "center" }}>
-        English Time! 🦜
-      </h1>
-      <p style={{ textAlign: "center", margin: "0.25rem 0 0", fontSize: "0.9rem" }}>
-        {childName}{" "}
-        <button onClick={onSwitch} style={{ marginLeft: "0.5rem" }}>
-          きりかえる
-        </button>
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1rem 1rem 0" }}>
+        <button onClick={onExit}>もどる</button>
+        <h1 style={{ fontSize: "1.6rem", margin: 0, textAlign: "center", flex: 1 }}>English Time! 🦜</h1>
+        <span style={{ width: "3.5rem" }} />
+      </div>
+      <p style={{ textAlign: "center", margin: "0.25rem 0 0", fontSize: "0.9rem" }}>{childName}</p>
       <ChatHistory sessions={sessions} phase={phase} />
       <div style={{ padding: "1.5rem", background: "#fff9db" }}>
         <TalkButton phase={phase} onStart={startConversation} onStop={endConversation} />
@@ -47,9 +46,46 @@ function VoiceChatScreen({
   );
 }
 
+function ModePicker({
+  childName,
+  onPick,
+  onSwitchChild,
+}: {
+  childName: string;
+  onPick: (mode: Mode) => void;
+  onSwitchChild: () => void;
+}) {
+  return (
+    <main
+      style={{
+        height: "100dvh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "1rem",
+        fontFamily: "system-ui, sans-serif",
+        background: "#fff9db",
+      }}
+    >
+      <h1 style={{ fontSize: "1.5rem", margin: 0 }}>{childName}さん、なにをする?</h1>
+      <button onClick={() => onPick("talk")} style={{ fontSize: "1.3rem", padding: "1rem 2rem", borderRadius: "1rem" }}>
+        いつもの おはなし
+      </button>
+      <button onClick={() => onPick("eiken")} style={{ fontSize: "1.3rem", padding: "1rem 2rem", borderRadius: "1rem" }}>
+        英検3級 めんせつ れんしゅう
+      </button>
+      <button onClick={onSwitchChild} style={{ marginTop: "1rem" }}>
+        きりかえる
+      </button>
+    </main>
+  );
+}
+
 export default function Home() {
   const [children, setChildren] = useState<ChildOption[] | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode | null>(null);
 
   useEffect(() => {
     fetch("/api/children")
@@ -68,11 +104,13 @@ export default function Home() {
   const handleSelect = (id: string) => {
     window.localStorage.setItem(STORAGE_KEY, id);
     setSelectedChildId(id);
+    setMode(null);
   };
 
   const handleSwitch = () => {
     window.localStorage.removeItem(STORAGE_KEY);
     setSelectedChildId(null);
+    setMode(null);
   };
 
   if (children === null) {
@@ -137,12 +175,20 @@ export default function Home() {
     );
   }
 
+  if (!mode) {
+    return <ModePicker childName={selectedChild.name} onPick={setMode} onSwitchChild={handleSwitch} />;
+  }
+
+  if (mode === "eiken") {
+    return <EikenInterviewScreen key={selectedChildId} childId={selectedChildId} onExit={() => setMode(null)} />;
+  }
+
   return (
     <VoiceChatScreen
       key={selectedChildId}
       childId={selectedChildId}
       childName={selectedChild.name}
-      onSwitch={handleSwitch}
+      onExit={() => setMode(null)}
     />
   );
 }

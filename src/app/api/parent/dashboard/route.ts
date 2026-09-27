@@ -4,6 +4,7 @@ import { listChildren } from "@/lib/children";
 import { getUsedSeconds } from "@/lib/usageLimiter";
 import { listTodaySummaries } from "@/lib/summaryStore";
 import { listTodayFlagEvents } from "@/lib/flagEvents";
+import { listTodayEikenResults } from "@/lib/eikenResults";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
       usedSeconds: await getUsedSeconds(child.id),
       summaries: await listTodaySummaries(child.id),
       flagEvents: await listTodayFlagEvents(child.id),
+      eikenResults: await listTodayEikenResults(child.id),
     }))
   );
 
