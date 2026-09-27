@@ -16,13 +16,13 @@ export async function recordFlagEvent(childId: string, childText: string, reason
   });
 }
 
-/** All flag events from today, newest first, across every child_id (see usageLimiter.ts caveat). */
-export async function listTodayFlagEvents(): Promise<FlagEvent[]> {
+/** A single child's flag events from today, newest first. */
+export async function listTodayFlagEvents(childId: string): Promise<FlagEvent[]> {
   const db = await getDb();
   const result = await db.execute({
     sql: `SELECT child_text, reason, created_at FROM flag_events
-          WHERE created_at >= ? ORDER BY created_at DESC`,
-    args: [startOfTodayMs()],
+          WHERE child_id = ? AND created_at >= ? ORDER BY created_at DESC`,
+    args: [childId, startOfTodayMs()],
   });
   return result.rows.map((r) => ({
     childText: String(r.child_text),

@@ -32,13 +32,13 @@ export async function saveSummary(
   });
 }
 
-/** All summaries from today, newest first, across every child_id (see usageLimiter.ts caveat). */
-export async function listTodaySummaries(): Promise<StoredSummary[]> {
+/** A single child's summaries from today, newest first. */
+export async function listTodaySummaries(childId: string): Promise<StoredSummary[]> {
   const db = await getDb();
   const result = await db.execute({
     sql: `SELECT conversation_id, headline, points_json, created_at FROM session_summaries
-          WHERE created_at >= ? ORDER BY created_at DESC`,
-    args: [startOfTodayMs()],
+          WHERE child_id = ? AND created_at >= ? ORDER BY created_at DESC`,
+    args: [childId, startOfTodayMs()],
   });
   return result.rows.map((r) => ({
     conversationId: String(r.conversation_id),

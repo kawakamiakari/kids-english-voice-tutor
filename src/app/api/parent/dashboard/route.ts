@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isParentAuthorized } from "@/lib/parentAuth";
-import { getTotalUsedSecondsToday } from "@/lib/usageLimiter";
+import { listChildren } from "@/lib/children";
+import { getUsedSeconds } from "@/lib/usageLimiter";
 import { listTodaySummaries } from "@/lib/summaryStore";
 import { listTodayFlagEvents } from "@/lib/flagEvents";
 
@@ -11,16 +12,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const [usedSeconds, summaries, flagEvents] = await Promise.all([
-    getTotalUsedSecondsToday(),
-    listTodaySummaries(),
-    listTodayFlagEvents(),
-  ]);
+  const children = await listChildren();
+  const breakdown = await Promise.all(
+    children.map(async (child) => ({
+      id: child.id,
+      name: child.name,
+      level: child.level,
+      usedSeconds: await getUsedSeconds(child.id),
+      summaries: await listTodaySummaries(child.id),
+      flagEvents: await listTodayFlagEvents(child.id),
+    }))
+  );
 
   return NextResponse.json({
-    usedSeconds,
     limitMinutes: Number(process.env.DAILY_LIMIT_MINUTES ?? 15),
-    summaries,
-    flagEvents,
+    children: breakdown,
   });
 }

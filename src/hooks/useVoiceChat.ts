@@ -32,7 +32,8 @@ function newId() {
     : String(Math.random());
 }
 
-export function useVoiceChat() {
+/** childId identifies which child profile (see lib/children.ts) this conversation belongs to. */
+export function useVoiceChat(childId: string) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [sessions, setSessions] = useState<Session[]>([]);
 
@@ -53,14 +54,6 @@ export function useVoiceChat() {
   // child tapped stop while a request was in flight) know to no-op instead of
   // clobbering fresher state.
   const generationRef = useRef(0);
-
-  // One random ID per browser tab. It is NOT a login/identity system - it just lets
-  // our server keep short-term conversation context and a daily time counter.
-  const sessionIdRef = useRef<string>(
-    typeof window !== "undefined"
-      ? window.crypto?.randomUUID?.() ?? String(Date.now())
-      : ""
-  );
 
   const stopVad = useCallback(() => {
     if (vadIntervalRef.current) {
@@ -157,7 +150,7 @@ export function useVoiceChat() {
 
     const form = new FormData();
     form.append("audio", blob, "speech.webm");
-    form.append("sessionId", sessionIdRef.current);
+    form.append("childId", childId);
     form.append("seconds", String(seconds));
 
     try {
@@ -215,7 +208,7 @@ export function useVoiceChat() {
         setPhase("error");
       }
     }
-  }, [stopVad, startListening]);
+  }, [stopVad, startListening, childId]);
 
   stopAndSendRef.current = stopAndSend;
 
@@ -228,7 +221,7 @@ export function useVoiceChat() {
       const res = await fetch("/api/summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript, conversationId: sessionId, childId: sessionIdRef.current }),
+        body: JSON.stringify({ transcript, conversationId: sessionId, childId }),
       });
       if (!res.ok) {
         applyFallback({
@@ -255,7 +248,7 @@ export function useVoiceChat() {
         ],
       });
     }
-  }, []);
+  }, [childId]);
 
   const startConversation = useCallback(() => {
     const id = newId();

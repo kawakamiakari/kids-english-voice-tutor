@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { openai } from "@/lib/openai";
 import {
-  SYSTEM_PROMPT,
+  buildSystemPrompt,
   REPLY_SCHEMA,
   SAFE_FALLBACK_REPLY,
   CHAT_MODEL,
@@ -13,6 +13,7 @@ import { isFlagged } from "@/lib/moderation";
 import { getHistory, appendTurn } from "@/lib/sessionStore";
 import { isOverDailyLimit, addUsedSeconds } from "@/lib/usageLimiter";
 import { recordFlagEvent } from "@/lib/flagEvents";
+import { getChild } from "@/lib/children";
 
 // Needs Node.js APIs (Buffer, File), not the Edge runtime.
 export const runtime = "nodejs";
@@ -27,15 +28,20 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
     const audio = form.get("audio");
-    const sessionId = String(form.get("sessionId") ?? "");
+    const childId = String(form.get("childId") ?? "");
     const clientSeconds = Number(form.get("seconds") ?? 5);
 
-    if (!(audio instanceof Blob) || !sessionId) {
+    if (!(audio instanceof Blob) || !childId) {
       return NextResponse.json({ error: "invalid_request" }, { status: 400 });
     }
 
+    const child = await getChild(childId);
+    if (!child) {
+      return NextResponse.json({ error: "unknown_child" }, { status: 400 });
+    }
+
     // 1) Parental daily time limit (see lib/usageLimiter.ts for its MVP caveats).
-    if (await isOverDailyLimit(sessionId)) {
+    if (await isOverDailyLimit(childId)) {
       return NextResponse.json({ error: "daily_limit_reached" }, { status: 403 });
     }
 
@@ -53,7 +59,7 @@ export async function POST(req: NextRequest) {
     // 3) Moderate the CHILD'S OWN words before they ever reach the tutor model.
     if (childText && (await isFlagged(childText))) {
       const audioBase64 = (await synthesize(SAFE_FALLBACK_REPLY)).toString("base64");
-      await addUsedSeconds(sessionId, clientSeconds);
+      await addUsedSeconds(childId, clientSeconds);
       return NextResponse.json({
         childText,
         aiText: SAFE_FALLBACK_REPLY,
@@ -62,16 +68,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 4) Ask the model for a reply. The fixed SYSTEM_PROMPT is added on every
-    //    single call from the server; the browser has no way to see or edit it,
-    //    and no tools (web search / image generation / code execution) are
-    //    attached, so the model has no technical means to do those things even
-    //    if asked.
-    const history = await getHistory(sessionId);
+    // 4) Ask the model for a reply. The system prompt (tuned to this child's level,
+    //    see lib/children.ts) is added on every single call from the server; the
+    //    browser has no way to see or edit it, and no tools (web search / image
+    //    generation / code execution) are attached, so the model has no technical
+    //    means to do those things even if asked.
+    const history = await getHistory(childId);
     const response = await openai.responses.create({
       model: CHAT_MODEL,
       input: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: buildSystemPrompt(child.level) },
         ...history.map((t) => ({ role: t.role, content: t.content })),
         { role: "user", content: childText || "(no speech detected)" },
       ],
@@ -98,12 +104,12 @@ export async function POST(req: NextRequest) {
 
     // 6) Short-term memory for natural follow-up questions, plus a persisted
     //    log of off-topic attempts for the parent dashboard.
-    await appendTurn(sessionId, { role: "user", content: childText });
-    await appendTurn(sessionId, { role: "assistant", content: aiText });
-    await addUsedSeconds(sessionId, clientSeconds);
+    await appendTurn(childId, { role: "user", content: childText });
+    await appendTurn(childId, { role: "assistant", content: aiText });
+    await addUsedSeconds(childId, clientSeconds);
 
     if (parsed.off_topic_attempt) {
-      await recordFlagEvent(sessionId, childText, parsed.flag_reason);
+      await recordFlagEvent(childId, childText, parsed.flag_reason);
     }
 
     // 7) Text -> speech.

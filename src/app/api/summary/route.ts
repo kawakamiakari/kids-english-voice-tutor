@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { openai } from "@/lib/openai";
-import { SUMMARY_PROMPT, SUMMARY_SCHEMA, CHAT_MODEL, TTS_MODEL, TTS_VOICE } from "@/lib/systemPrompt";
+import { buildSummaryPrompt, SUMMARY_SCHEMA, CHAT_MODEL, TTS_MODEL, TTS_VOICE } from "@/lib/systemPrompt";
 import { saveSummary } from "@/lib/summaryStore";
+import { getChild } from "@/lib/children";
 
 // Needs Node.js APIs (Buffer), not the Edge runtime.
 export const runtime = "nodejs";
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
     let parsed = FALLBACK_SUMMARY;
 
     if (transcript.length > 0) {
+      const child = await getChild(childId);
       const transcriptText = transcript
         .map((m) => `${m.role === "child" ? "Student" : "Pico"}: ${m.text}`)
         .join("\n");
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest) {
       const response = await openai.responses.create({
         model: CHAT_MODEL,
         input: [
-          { role: "system", content: SUMMARY_PROMPT },
+          { role: "system", content: buildSummaryPrompt(child?.level ?? 1) },
           { role: "user", content: transcriptText },
         ],
         text: { format: { type: "json_schema", ...SUMMARY_SCHEMA } },
